@@ -13,7 +13,6 @@ if [ ! -d "boundless" ]; then
 fi
 cd boundless
 git checkout release-0.13 || true
-cd ..
 
 echo "=== Rust toolchain (rustup) ==="
 if ! command -v rustup >/dev/null 2>&1; then
