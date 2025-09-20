@@ -2,10 +2,24 @@
 set -euo pipefail
 
 echo "=== Update & deps ==="
-sudo apt update && sudo apt upgrade -y
+sudo apt update -y && sudo apt upgrade -y
 sudo apt install -y curl iptables build-essential git wget lz4 jq make gcc nano \
   automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev tar clang \
-  bsdmainutils ncdu unzip libleveldb-dev libclang-dev ninja-build
+  bsdmainutils ncdu unzip libleveldb-dev libclang-dev ninja-build apt-transport-https \
+  ca-certificates software-properties-common gnupg lsb-release
+
+echo "=== Install Docker ==="
+if ! command -v docker >/dev/null 2>&1; then
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+    $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo apt update -y
+  sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  sudo systemctl enable docker
+  sudo systemctl start docker
+fi
+docker --version
 
 echo "=== Clone Boundless ==="
 if [ ! -d "boundless" ]; then
@@ -67,7 +81,7 @@ rzup --version || rzup --help
 
 echo "=== Install RISC Zero cargo helpers ==="
 rzup install rust || true
-cargo install cargo-risczero || true
+cargo install cargo-risczero -y || true
 rzup install cargo-risczero || true
 
 echo "=== Install just ==="
