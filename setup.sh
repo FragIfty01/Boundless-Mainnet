@@ -1,58 +1,84 @@
-#!/bin/bash
-set -e  # Exit if any command fails
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "=== Updating and upgrading system ==="
+echo "=== Update & deps ==="
 sudo apt update && sudo apt upgrade -y
-
-echo "=== Installing dependencies ==="
 sudo apt install -y curl iptables build-essential git wget lz4 jq make gcc nano \
-    automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev tar clang \
-    bsdmainutils ncdu unzip libleveldb-dev libclang-dev ninja-build
+  automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev tar clang \
+  bsdmainutils ncdu unzip libleveldb-dev libclang-dev ninja-build
 
-echo "=== Cloning Boundless repo ==="
+echo "=== Clone Boundless ==="
 if [ ! -d "boundless" ]; then
-    git clone https://github.com/boundless-xyz/boundless
+  git clone https://github.com/boundless-xyz/boundless
 fi
 cd boundless
-git checkout release-0.13
+git checkout release-0.13 || true
 cd ..
 
-echo "=== Installing Rust (rustup) ==="
-if ! command -v rustup &> /dev/null; then
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    source $HOME/.cargo/env
+echo "=== Rust toolchain (rustup) ==="
+if ! command -v rustup >/dev/null 2>&1; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  # make rustup available in this session
+  if [ -f "$HOME/.cargo/env" ]; then
+    # shellcheck source=/dev/null
+    source "$HOME/.cargo/env"
+  fi
 fi
-rustup update
+rustup update || true
 
-echo "=== Installing Cargo ==="
-sudo apt install -y cargo
-cargo --version
+echo "=== Ensure cargo available ==="
+sudo apt install -y cargo || true
+cargo --version || true
 
-echo "=== Installing RISC Zero rzup ==="
-curl -L https://risczero.com/install | bash
-source ~/.bashrc
-rzup --version
+echo "=== Install RISC Zero (rzup) ==="
+curl -L https://risczero.com/install | bash || true
 
-echo "=== Installing RISC Zero Rust Toolchain ==="
-rzup install rust
+# Source common shell startup files (best-effort)
+for rc in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.bash_profile" "/etc/profile"; do
+  if [ -f "$rc" ]; then
+    # shellcheck source=/dev/null
+    source "$rc" || true
+  fi
+done
 
-echo "=== Installing cargo-risczero ==="
+# Ensure PATH includes likely rzup/cargo locations for rest of this script
+for d in "$HOME/.rzup/bin" "$HOME/.local/bin" "$HOME/.cargo/bin" "/usr/local/bin" "/usr/bin"; do
+  if [ -x "$d/rzup" ] || [ -f "$d/rzup" ]; then
+    export PATH="$d:$PATH"
+    break
+  fi
+done
+
+# As a fallback search under $HOME
+if ! command -v rzup >/dev/null 2>&1; then
+  found=$(find "$HOME" -maxdepth 4 -type f -name rzup -perm /111 2>/dev/null | head -n1 || true)
+  if [ -n "$found" ]; then
+    dir=$(dirname "$found")
+    export PATH="$dir:$PATH"
+    echo "Found rzup at $found; added $dir to PATH"
+  fi
+fi
+
+if ! command -v rzup >/dev/null 2>&1; then
+  echo "ERROR: rzup not found in PATH after installer. Please restart your shell or run: source \"$HOME/.bashrc\""
+  exit 1
+fi
+
+rzup --version || rzup --help
+
+echo "=== Install RISC Zero cargo helpers ==="
+rzup install rust || true
 cargo install cargo-risczero || true
-rzup install cargo-risczero
+rzup install cargo-risczero || true
 
-rustup update
-
-echo "=== Installing Just ==="
-if ! command -v just &> /dev/null; then
-    cargo install just
+echo "=== Install just ==="
+if ! command -v just >/dev/null 2>&1; then
+  cargo install just || true
 fi
-just --version
+just --version || true
 
-echo "=== Installing Boundless CLI tools ==="
-cargo install --locked --git https://github.com/boundless-xyz/boundless bento-client \
-    --branch release-1.0 --bin bento_cli
+echo "=== Install Boundless CLI(s) ==="
+cargo install --locked --git https://github.com/boundless-xyz/boundless bento-client --branch release-1.0 --bin bento_cli || true
+cargo install --locked --git https://github.com/boundless-xyz/boundless boundless-cli --branch release-1.0 --bin boundless || true
 
-cargo install --locked --git https://github.com/boundless-xyz/boundless boundless-cli \
-    --branch release-1.0 --bin boundless
-
-echo "=== Setup completed successfully ==="
+echo "=== Done ==="
